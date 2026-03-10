@@ -99,4 +99,18 @@ class PanelControl(ui.View):
                 await it.response.edit_message(content=f"📍 {sel.values[0]} | Elige categoría:", view=view_cat)
             select.callback = lugar_cb
             view.add_item(select)
-        await interaction.response.send_message("Sele
+        await interaction.response.send_message("Selecciona ubicación:", view=view, ephemeral=True)
+
+    def crear_cat_cb(self, cat, lugar, accion):
+        async def cb(it):
+            v = ui.View()
+            v.add_item(SelectorObjeto(cat, lugar, accion))
+            await it.response.edit_message(content=f"📍 {lugar} > {cat}. Elige objeto:", view=v)
+        return cb
+
+@bot.tree.command(name="panel_inventario", description="Genera el panel")
+async def panel_inventario(interaction):
+    await interaction.response.send_message("📦 **ALMACÉN DE FACCION**", view=PanelControl(bot))
+
+Thread(target=run).start()
+bot.run(os.getenv("DISCORD_TOKEN"))
