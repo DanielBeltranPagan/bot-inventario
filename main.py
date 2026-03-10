@@ -49,7 +49,7 @@ def generar_embed_inventario():
 
 bot = commands.Bot(command_prefix="!", intents=discord.Intents.all())
 
-# --- INTERFAZ DE NAVEGACIÓN ---
+# --- INTERFAZ ---
 class PanelControl(ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -73,7 +73,12 @@ class PanelControl(ui.View):
             view = ui.View()
             select = ui.Select(placeholder=f"Elegir sitio en {zona}...", 
                                options=[discord.SelectOption(label=s) for s in LUGARES[zona]])
-            select.callback = lambda it_sitio: self.mostrar_categorias(it_sitio, it_sitio.values[0], accion)
+            
+            async def select_callback(it_sitio):
+                lugar = select.values[0]
+                await self.mostrar_categorias(it_sitio, lugar, accion)
+            
+            select.callback = select_callback
             view.add_item(select)
             await it.response.edit_message(content=f"📍 Has elegido **{zona}**. Ahora elige el sitio:", view=view)
         return cb
@@ -90,7 +95,11 @@ class PanelControl(ui.View):
         view = ui.View()
         select = ui.Select(placeholder="Selecciona objeto...", 
                            options=[discord.SelectOption(label=obj) for obj in CATEGORIAS[cat]])
-        select.callback = lambda it_obj: it_obj.response.send_modal(CantidadModal(accion, lugar, it_obj.values[0], it.message))
+        
+        async def obj_callback(it_obj):
+            await it_obj.response.send_modal(CantidadModal(accion, lugar, select.values[0], it.message))
+        
+        select.callback = obj_callback
         view.add_item(select)
         await it.response.edit_message(content=f"📍 {lugar} > {cat}. ¿Qué objeto?", view=view)
 
@@ -101,19 +110,22 @@ class CantidadModal(ui.Modal, title="Cantidad"):
         self.accion, self.lugar, self.objeto, self.panel_msg = accion, lugar, objeto, panel_msg
 
     async def on_submit(self, interaction):
-        cant = int(self.input_cant.value)
-        # Lógica de DB
-        filtro = {"objeto": self.objeto, "lugar": self.lugar}
-        if self.accion == "Retirar":
-            ex = items_col.find_one(filtro)
-            if not ex or ex['cantidad'] < cant: return await interaction.response.send_message("❌ Insuficiente.", ephemeral=True)
-            if ex['cantidad'] == cant: items_col.delete_one(filtro)
-            else: items_col.update_one(filtro, {"$inc": {"cantidad": -cant}})
-        else:
-            items_col.update_one(filtro, {"$inc": {"cantidad": cant}}, upsert=True)
-        
-        await self.panel_msg.edit(embed=generar_embed_inventario())
-        await interaction.response.send_message(f"✅ {self.accion} realizado.", ephemeral=True, delete_after=2)
+        try:
+            cant = int(self.input_cant.value)
+            filtro = {"objeto": self.objeto, "lugar": self.lugar}
+            
+            if self.accion == "Retirar":
+                ex = items_col.find_one(filtro)
+                if not ex or ex['cantidad'] < cant: return await interaction.response.send_message("❌ Insuficiente.", ephemeral=True)
+                if ex['cantidad'] == cant: items_col.delete_one(filtro)
+                else: items_col.update_one(filtro, {"$inc": {"cantidad": -cant}})
+            else:
+                items_col.update_one(filtro, {"$inc": {"cantidad": cant}}, upsert=True)
+            
+            await self.panel_msg.edit(embed=generar_embed_inventario())
+            await interaction.response.send_message(f"✅ {self.accion} realizado.", ephemeral=True, delete_after=2)
+        except ValueError:
+            await interaction.response.send_message("❌ Introduce un número.", ephemeral=True)
 
 @bot.tree.command(name="panel_inventario")
 async def panel_inventario(interaction):
