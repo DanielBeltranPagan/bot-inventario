@@ -22,13 +22,13 @@ client = MongoClient(os.getenv("MONGO_URI"))
 db = client['InventarioGTA']
 items_col = db['items']
 
-# --- WEB SERVER ---
+# --- WEB SERVER (PARA RENDER) ---
 app = Flask('')
 @app.route('/')
 def home(): return "Bot Online"
 def run_flask(): app.run(host='0.0.0.0', port=8080)
 
-# --- LÓGICA DE EMBED MEJORADA ---
+# --- LÓGICA DE EMBED MEJORADA (ESTÉTICA) ---
 def generar_embed_inventario():
     embed = discord.Embed(title="📦 ALMACÉN DE LA FACCIÓN", color=discord.Color.blue())
     items = list(items_col.find())
@@ -37,20 +37,23 @@ def generar_embed_inventario():
     else:
         emojis_zona = {"SEDE": "🏠", "VEHICULOS": "🚗"}
         for zona, sitios in LUGARES.items():
-            texto = ""
+            texto_zona = ""
             for sitio in sitios:
                 objs = [i for i in items if i['lugar'] == sitio]
                 if objs:
-                    texto += f"**📍 {sitio.title()}:**\n" 
-                    texto += "\n".join([f"  • {i['objeto'].title()}: **{i['cantidad']}x**" for i in objs]) + "\n\n"
-            if texto: 
-                embed.add_field(name=f"{emojis_zona.get(zona, '📦')} {zona}", value=texto, inline=False)
-                embed.add_field(name="\u200b", value="\u200b", inline=False) 
+                    texto_zona += f"\n**📍 {sitio.title()}**\n"
+                    for i in objs:
+                        texto_zona += f"  • {i['objeto'].title()}: **{i['cantidad']}x**\n"
+                    texto_zona += "\n" # Espacio entre sitios
+            
+            if texto_zona:
+                embed.add_field(name=f"{emojis_zona.get(zona, '📦')} {zona}", value=texto_zona, inline=False)
+                embed.add_field(name="\u200b", value="\u200b", inline=False) # Espacio extra entre zonas
     return embed
 
 bot = commands.Bot(command_prefix="!", intents=discord.Intents.all())
 
-# --- VISTA CENTRAL ---
+# --- VISTA CENTRAL DE NAVEGACIÓN ---
 class PanelControl(ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -80,14 +83,14 @@ class PanelControl(ui.View):
                     items_en_lugar = list(items_col.find({"lugar": lugar}))
                     if not items_en_lugar: return await it_sitio.response.edit_message(content="❌ Sitio vacío.", view=PanelControl())
                     view_obj = ui.View()
-                    select_obj = ui.Select(placeholder="Selecciona objeto...", options=[discord.SelectOption(label=i['objeto']) for i in items_en_lugar])
+                    select_obj = ui.Select(placeholder="¿Qué retirar?", options=[discord.SelectOption(label=i['objeto']) for i in items_en_lugar])
                     select_obj.callback = lambda it_o: it_o.response.send_modal(CantidadModal(accion, lugar, select_obj.values[0]))
                     view_obj.add_item(select_obj); view_obj.add_item(self.btn_cancelar())
-                    await it_sitio.response.edit_message(content=f"📍 {lugar}. ¿Qué retirar?", view=view_obj)
+                    await it_sitio.response.edit_message(content=f"📍 {lugar}. Selecciona objeto:", view=view_obj)
                 else: await self.mostrar_categorias(it_sitio, lugar, accion)
             select.callback = sel_cb
             view.add_item(select); view.add_item(self.btn_cancelar())
-            await it.response.edit_message(content=f"📍 Elegiste **{zona}**. Selecciona sitio:", view=view)
+            await it.response.edit_message(content=f"📍 Has elegido **{zona}**. Selecciona sitio:", view=view)
         return cb
 
     async def mostrar_categorias(self, it, lugar, accion):
@@ -127,6 +130,7 @@ class CantidadModal(ui.Modal, title="Cantidad"):
                 if ex['cantidad'] == cant: items_col.delete_one(filtro)
                 else: items_col.update_one(filtro, {"$inc": {"cantidad": -cant}})
             else: items_col.update_one(filtro, {"$inc": {"cantidad": cant}}, upsert=True)
+            
             await interaction.response.send_message(f"✅ {self.accion} exitoso.", ephemeral=True, delete_after=2)
             await interaction.message.edit(content="📦 **PANEL PRINCIPAL**", embed=generar_embed_inventario(), view=PanelControl())
         except ValueError:
