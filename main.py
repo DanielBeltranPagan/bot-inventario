@@ -40,7 +40,11 @@ def generar_embed_inventario():
             for sitio in sitios:
                 objs = [i for i in items if i['lugar'] == sitio]
                 if objs:
-                    texto_zona += f"**📍 {sitio}:** " + ", ".join([f"{i['objeto'].title()} ({i['cantidad']}x)" for i in objs]) + "\n"
+                    texto_zona += f"**📍 {sitio}:**\n"
+                    # Lista hacia abajo
+                    for i in objs:
+                        texto_zona += f"   • {i['objeto'].title()}: **{i['cantidad']}x**\n"
+                    texto_zona += "\n"
             if texto_zona:
                 embed.add_field(name=f"--- {zona} ---", value=texto_zona, inline=False)
     return embed
@@ -49,9 +53,8 @@ bot = commands.Bot(command_prefix="!", intents=discord.Intents.all())
 
 # --- VISTA DE BOTONES ---
 class PanelControl(ui.View):
-    def __init__(self, inv_msg):
+    def __init__(self):
         super().__init__(timeout=None)
-        self.inv_msg = inv_msg # Guardamos referencia al mensaje del inventario
 
     @ui.button(label="📥 DEPOSITAR", style=discord.ButtonStyle.success)
     async def depositar(self, interaction, button): await self.elegir_zona(interaction, "Depositar")
@@ -65,15 +68,14 @@ class PanelControl(ui.View):
             btn = ui.Button(label=zona, style=discord.ButtonStyle.primary)
             btn.callback = self.crear_zona_cb(zona, accion)
             view.add_item(btn)
-        await interaction.response.send_message(f"¿Qué quieres {accion}?", view=view, ephemeral=True)
+        await interaction.response.edit_message(content=f"⚙️ ¿Qué quieres {accion}?", embed=None, view=view)
 
     def crear_zona_cb(self, zona, accion):
         async def cb(it):
             view = ui.View()
             select = ui.Select(placeholder=f"Elegir sitio en {zona}...", options=[discord.SelectOption(label=s) for s in LUGARES[zona]])
             async def sel_cb(it_sitio):
-                lugar = select.values[0]
-                await self.mostrar_categorias(it_sitio, lugar, accion)
+                await self.mostrar_categorias(it_sitio, select.values[0], accion)
             select.callback = sel_cb
             view.add_item(select)
             await it.response.edit_message(content=f"📍 Has elegido **{zona}**. Selecciona el sitio:", view=view)
@@ -91,41 +93,34 @@ class PanelControl(ui.View):
         view = ui.View()
         select = ui.Select(placeholder="Selecciona objeto...", options=[discord.SelectOption(label=obj) for obj in CATEGORIAS[cat]])
         async def obj_cb(it_obj):
-            await it_obj.response.send_modal(CantidadModal(accion, lugar, select.values[0], self.inv_msg))
+            await it_obj.response.send_modal(CantidadModal(accion, lugar, select.values[0]))
         select.callback = obj_cb
         view.add_item(select)
-        await it.response.edit_message(content=f"📍 {lugar} > {cat}. ¿Objeto?", view=view)
+        await it.response.edit_message(content=f"📍 {lugar} > {cat}. ¿Qué objeto?", view=view)
 
 class CantidadModal(ui.Modal, title="Cantidad"):
     input_cant = ui.TextInput(label="Cantidad", placeholder="Ej: 1")
-    def __init__(self, accion, lugar, objeto, inv_msg):
+    def __init__(self, accion, lugar, objeto):
         super().__init__()
-        self.accion, self.lugar, self.objeto, self.inv_msg = accion, lugar, objeto, inv_msg
+        self.accion, self.lugar, self.objeto = accion, lugar, objeto
 
     async def on_submit(self, interaction):
-        try:
-            cant = int(self.input_cant.value)
-            filtro = {"objeto": self.objeto, "lugar": self.lugar}
-            if self.accion == "Retirar":
-                ex = items_col.find_one(filtro)
-                if not ex or ex['cantidad'] < cant: return await interaction.response.send_message("❌ Insuficiente.", ephemeral=True)
-                if ex['cantidad'] == cant: items_col.delete_one(filtro)
-                else: items_col.update_one(filtro, {"$inc": {"cantidad": -cant}})
-            else:
-                items_col.update_one(filtro, {"$inc": {"cantidad": cant}}, upsert=True)
-            
-            # Refrescar mensaje inventario
-            await self.inv_msg.edit(embed=generar_embed_inventario())
-            await interaction.response.send_message("✅ Operación completada.", ephemeral=True, delete_after=2)
-        except Exception as e:
-            await interaction.response.send_message(f"❌ Error: {e}", ephemeral=True)
+        cant = int(self.input_cant.value)
+        filtro = {"objeto": self.objeto, "lugar": self.lugar}
+        if self.accion == "Retirar":
+            ex = items_col.find_one(filtro)
+            if not ex or ex['cantidad'] < cant: return await interaction.response.send_message("❌ Insuficiente.", ephemeral=True)
+            if ex['cantidad'] == cant: items_col.delete_one(filtro)
+            else: items_col.update_one(filtro, {"$inc": {"cantidad": -cant}})
+        else:
+            items_col.update_one(filtro, {"$inc": {"cantidad": cant}}, upsert=True)
+        
+        # Volvemos al panel principal con el inventario actualizado
+        await interaction.response.edit_message(content=None, embed=generar_embed_inventario(), view=PanelControl())
 
 @bot.tree.command(name="panel_inventario")
 async def panel_inventario(interaction):
-    # 1. Creamos el mensaje del inventario primero
-    inv_msg = await interaction.channel.send(embed=generar_embed_inventario())
-    # 2. Creamos el mensaje de los botones
-    await interaction.response.send_message("⚙️ **Panel de Control:**", view=PanelControl(inv_msg))
+    await interaction.response.send_message(embed=generar_embed_inventario(), view=PanelControl())
 
 Thread(target=run).start()
 bot.run(os.getenv("DISCORD_TOKEN"))
