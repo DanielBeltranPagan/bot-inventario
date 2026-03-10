@@ -22,6 +22,12 @@ client = MongoClient(os.getenv("MONGO_URI"))
 db = client['InventarioGTA']
 items_col = db['items']
 
+# --- WEB SERVER (PARA QUE RENDER NO DE ERROR DE PUERTO) ---
+app = Flask('')
+@app.route('/')
+def home(): return "Bot Online"
+def run_flask(): app.run(host='0.0.0.0', port=8080)
+
 # --- LÓGICA DE EMBED ---
 def generar_embed_inventario():
     embed = discord.Embed(title="📦 INVENTARIO ACTUAL", color=discord.Color.blue())
@@ -44,11 +50,10 @@ class PanelControl(ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    # Botones principales
-    @ui.button(label="📥 DEPOSITAR", style=discord.ButtonStyle.success, custom_id="btn_dep")
+    @ui.button(label="📥 DEPOSITAR", style=discord.ButtonStyle.success)
     async def depositar(self, interaction, button): await self.elegir_zona(interaction, "Depositar")
     
-    @ui.button(label="📤 RETIRAR", style=discord.ButtonStyle.danger, custom_id="btn_ret")
+    @ui.button(label="📤 RETIRAR", style=discord.ButtonStyle.danger)
     async def retirar(self, interaction, button): await self.elegir_zona(interaction, "Retirar")
 
     async def elegir_zona(self, interaction, accion):
@@ -64,7 +69,8 @@ class PanelControl(ui.View):
         async def cb(it):
             view = ui.View()
             select = ui.Select(placeholder="Elegir sitio...", options=[discord.SelectOption(label=s) for s in LUGARES[zona]])
-            select.callback = lambda it_sitio: self.mostrar_categorias(it_sitio, select.values[0], accion)
+            async def sel_cb(it_sitio): await self.mostrar_categorias(it_sitio, select.values[0], accion)
+            select.callback = sel_cb
             view.add_item(select)
             view.add_item(self.btn_cancelar())
             await it.response.edit_message(content=f"📍 Elegiste **{zona}**. Selecciona sitio:", embed=generar_embed_inventario(), view=view)
@@ -82,7 +88,8 @@ class PanelControl(ui.View):
     async def mostrar_objetos(self, it, cat, lugar, accion):
         view = ui.View()
         select = ui.Select(placeholder="Selecciona objeto...", options=[discord.SelectOption(label=obj) for obj in CATEGORIAS[cat]])
-        select.callback = lambda it_obj: it_obj.response.send_modal(CantidadModal(accion, lugar, select.values[0]))
+        async def obj_cb(it_obj): await it_obj.response.send_modal(CantidadModal(accion, lugar, select.values[0]))
+        select.callback = obj_cb
         view.add_item(select)
         view.add_item(self.btn_cancelar())
         await it.response.edit_message(content=f"📍 {lugar} > {cat}. ¿Qué objeto?", embed=generar_embed_inventario(), view=view)
@@ -113,4 +120,6 @@ class CantidadModal(ui.Modal, title="Cantidad"):
 async def panel_inventario(interaction):
     await interaction.response.send_message(embed=generar_embed_inventario(), view=PanelControl())
 
+# --- INICIO ---
+Thread(target=run_flask).start()
 bot.run(os.getenv("DISCORD_TOKEN"))
