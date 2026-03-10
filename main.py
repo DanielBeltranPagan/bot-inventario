@@ -6,15 +6,16 @@ from pymongo import MongoClient
 from threading import Thread
 from flask import Flask
 
-# --- CONFIGURACIÓN ---
+# --- CONFIGURACIÓN NUEVA ---
 CATEGORIAS = {
-    "ARMAS": ["Mazo", "Bate de béisbol con pinchos", "Palo de golf", "Navaja automática", "Machete", "Taco de billar", "Cuchillo"],
-    "DROGAS": ["Papel de fumar", "Cogollos secos", "Porro", "Bolsa con polvillos", "Semillas genéricas", "Seed Pouch", "Ácido", "Bote de pastillas"],
-    "OTROS": ["USB para impresora 3D", "Dispositivo Multifuncion", "Tarjeta SD", "Radio bàsica", "Ganzúa", "Contenedor de gominolas", "Vaso de refresco", "Jeringa", "Teléfono", "Bidón de gasolina", "Bolsa agrícola", "Respirador", "Binoculares"]
+    "ARMAS": ["Mazo", "Bate De Béisbol Con Pinchos", "Palo De Golf", "Navaja Automática", "Machete", "Cuchillo", "Bate De Béisbol", "Palanca", "Martillo", "Hacha", "Pistola B92", "Pistola P2K", "Munición Pistola P2K", "Munición Pistola B92", "R700", "Munición R700"],
+    "DROGAS": ["Cogollos Secos", "Porro", "Bolsa Con Polvitos", "Semilla Genérica", "Seed Pouch", "Bolsa Agrícola", "Semillas De Lima", "Semilla De Coca", "Marihuana Empaquetada"],
+    "EQUIPAMIENTO": ["Respirador", "Binoculares", "Ganzúa", "Tablet", "Jeringa", "Dispositivo Multifuncion", "Pala De Jardín", "Chaleco Táctico", "Placas", "Bridas"],
+    "OTROS": ["Cartera", "Llavero", "Billetera Luc", "Taco De Billar", "Vaso De Refresco", "Radio Básica", "Teléfono", "Contenedor De Gominolas", "Bote De Pastillas", "Pendrive Usb", "Pendrive Rojo", "Pendrive Carreras", "Pendrive Pistas", "Papel Absorbente", "Aceite De Coco", "Paquete De Puros", "Bolsa Negra", "Botiquín De Primeros Auxilios", "Lima", "Film De Cocina", "Papel De Fumar", "Dinero", "Paquete De Cigarrillos", "Bloc De Notas", "Cartera De Tarjetas", "Cartera De Documentos", "Caja De Cerveza", "Bidón De Gasolina", "Tarjeta Sd"]
 }
 
 LUGARES = {
-    "SEDE": ["ESTANTERIA 1", "ESTANTERIA 2", "ESTANTERIA 3", "CAJA FUERTE", "CAJA MUNICIONES", "CAJA ARMAS", "CAJA DINERO"],
+    "SEDE": ["ESTANTERIA 1", "ESTANTERIA 2", "ESTANTERIA 3", "CAJA DINERO"],
     "VEHICULOS": ["BURRITO 1", "BURRITO 2"]
 }
 
@@ -22,13 +23,13 @@ client = MongoClient(os.getenv("MONGO_URI"))
 db = client['InventarioGTA']
 items_col = db['items']
 
-# --- WEB SERVER (PARA RENDER) ---
+# --- WEB SERVER ---
 app = Flask('')
 @app.route('/')
 def home(): return "Bot Online"
 def run_flask(): app.run(host='0.0.0.0', port=8080)
 
-# --- LÓGICA DE EMBED MEJORADA (ESTÉTICA) ---
+# --- LÓGICA DE EMBED ---
 def generar_embed_inventario():
     embed = discord.Embed(title="📦 ALMACÉN DE LA FACCIÓN", color=discord.Color.blue())
     items = list(items_col.find())
@@ -44,16 +45,15 @@ def generar_embed_inventario():
                     texto_zona += f"\n**📍 {sitio.title()}**\n"
                     for i in objs:
                         texto_zona += f"  • {i['objeto'].title()}: **{i['cantidad']}x**\n"
-                    texto_zona += "\n" # Espacio entre sitios
-            
+                    texto_zona += "\n"
             if texto_zona:
                 embed.add_field(name=f"{emojis_zona.get(zona, '📦')} {zona}", value=texto_zona, inline=False)
-                embed.add_field(name="\u200b", value="\u200b", inline=False) # Espacio extra entre zonas
+                embed.add_field(name="\u200b", value="\u200b", inline=False)
     return embed
 
 bot = commands.Bot(command_prefix="!", intents=discord.Intents.all())
 
-# --- VISTA CENTRAL DE NAVEGACIÓN ---
+# --- VISTA CENTRAL ---
 class PanelControl(ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -130,7 +130,6 @@ class CantidadModal(ui.Modal, title="Cantidad"):
                 if ex['cantidad'] == cant: items_col.delete_one(filtro)
                 else: items_col.update_one(filtro, {"$inc": {"cantidad": -cant}})
             else: items_col.update_one(filtro, {"$inc": {"cantidad": cant}}, upsert=True)
-            
             await interaction.response.send_message(f"✅ {self.accion} exitoso.", ephemeral=True, delete_after=2)
             await interaction.message.edit(content="📦 **PANEL PRINCIPAL**", embed=generar_embed_inventario(), view=PanelControl())
         except ValueError:
@@ -139,8 +138,6 @@ class CantidadModal(ui.Modal, title="Cantidad"):
 @bot.tree.command(name="panel_inventario")
 async def panel_inventario(interaction):
     await interaction.response.send_message(embed=generar_embed_inventario(), view=PanelControl())
-
-
 
 Thread(target=run_flask).start()
 bot.run(os.getenv("DISCORD_TOKEN"))
