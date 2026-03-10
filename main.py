@@ -22,7 +22,7 @@ client = MongoClient(os.getenv("MONGO_URI"))
 db = client['InventarioGTA']
 items_col = db['items']
 
-# --- WEB SERVER (PARA QUE RENDER NO DE ERROR DE PUERTO) ---
+# --- WEB SERVER ---
 app = Flask('')
 @app.route('/')
 def home(): return "Bot Online"
@@ -69,11 +69,30 @@ class PanelControl(ui.View):
         async def cb(it):
             view = ui.View()
             select = ui.Select(placeholder="Elegir sitio...", options=[discord.SelectOption(label=s) for s in LUGARES[zona]])
-            async def sel_cb(it_sitio): await self.mostrar_categorias(it_sitio, select.values[0], accion)
+            
+            async def sel_cb(it_sitio):
+                lugar = select.values[0]
+                if accion == "Retirar":
+                    # MOSTRAR SOLO OBJETOS DISPONIBLES
+                    items_en_lugar = list(items_col.find({"lugar": lugar}))
+                    if not items_en_lugar:
+                        return await it_sitio.response.edit_message(content="❌ Este sitio está vacío.", view=PanelControl())
+                    
+                    view_obj = ui.View()
+                    select_obj = ui.Select(placeholder="Elige objeto a retirar...", 
+                                          options=[discord.SelectOption(label=i['objeto']) for i in items_en_lugar])
+                    select_obj.callback = lambda it_o: it_o.response.send_modal(CantidadModal(accion, lugar, select_obj.values[0]))
+                    view_obj.add_item(select_obj)
+                    view_obj.add_item(self.btn_cancelar())
+                    await it_sitio.response.edit_message(content=f"📍 {lugar}. Selecciona objeto:", view=view_obj)
+                else:
+                    # DEPOSITAR: MANTENER FLUJO CATEGORÍAS
+                    await self.mostrar_categorias(it_sitio, lugar, accion)
+            
             select.callback = sel_cb
             view.add_item(select)
             view.add_item(self.btn_cancelar())
-            await it.response.edit_message(content=f"📍 Elegiste **{zona}**. Selecciona sitio:", embed=generar_embed_inventario(), view=view)
+            await it.response.edit_message(content=f"📍 Elegiste **{zona}**. Selecciona sitio:", view=view)
         return cb
 
     async def mostrar_categorias(self, it, lugar, accion):
@@ -83,16 +102,15 @@ class PanelControl(ui.View):
             btn.callback = lambda it_cat, c=cat: self.mostrar_objetos(it_cat, c, lugar, accion)
             view.add_item(btn)
         view.add_item(self.btn_cancelar())
-        await it.response.edit_message(content=f"📍 **{lugar}**. Elige categoría:", embed=generar_embed_inventario(), view=view)
+        await it.response.edit_message(content=f"📍 **{lugar}**. Elige categoría:", view=view)
 
     async def mostrar_objetos(self, it, cat, lugar, accion):
         view = ui.View()
         select = ui.Select(placeholder="Selecciona objeto...", options=[discord.SelectOption(label=obj) for obj in CATEGORIAS[cat]])
-        async def obj_cb(it_obj): await it_obj.response.send_modal(CantidadModal(accion, lugar, select.values[0]))
-        select.callback = obj_cb
+        select.callback = lambda it_obj: it_obj.response.send_modal(CantidadModal(accion, lugar, select.values[0]))
         view.add_item(select)
         view.add_item(self.btn_cancelar())
-        await it.response.edit_message(content=f"📍 {lugar} > {cat}. ¿Qué objeto?", embed=generar_embed_inventario(), view=view)
+        await it.response.edit_message(content=f"📍 {lugar} > {cat}. ¿Qué objeto?", view=view)
 
     def btn_cancelar(self):
         btn = ui.Button(label="❌ CANCELAR", style=discord.ButtonStyle.secondary)
@@ -114,12 +132,15 @@ class CantidadModal(ui.Modal, title="Cantidad"):
             if ex['cantidad'] == cant: items_col.delete_one(filtro)
             else: items_col.update_one(filtro, {"$inc": {"cantidad": -cant}})
         else: items_col.update_one(filtro, {"$inc": {"cantidad": cant}}, upsert=True)
-        await interaction.response.edit_message(content="✅ Operación exitosa.", embed=generar_embed_inventario(), view=PanelControl())
+        
+        # MENSAJE TEMPORAL
+        await interaction.response.send_message(f"✅ {self.accion} realizado.", ephemeral=True, delete_after=3)
+        # ACTUALIZAR PANEL
+        await interaction.message.edit(content="📦 **PANEL PRINCIPAL**", embed=generar_embed_inventario(), view=PanelControl())
 
 @bot.tree.command(name="panel_inventario")
 async def panel_inventario(interaction):
     await interaction.response.send_message(embed=generar_embed_inventario(), view=PanelControl())
 
-# --- INICIO ---
 Thread(target=run_flask).start()
 bot.run(os.getenv("DISCORD_TOKEN"))
