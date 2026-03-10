@@ -31,50 +31,55 @@ app = Flask('')
 def home(): return "Bot Online"
 def run(): app.run(host='0.0.0.0', port=8080)
 
+# --- LÓGICA DE ACTUALIZACIÓN ---
+def generar_embed_inventario():
+    embed = discord.Embed(title="📦 ALMACÉN DE FACCION", color=discord.Color.blue())
+    items = list(items_col.find())
+    if not items:
+        embed.description = "El almacén está vacío."
+    else:
+        for zona, sitios in LUGARES.items():
+            contenido = ""
+            for sitio in sitios:
+                objs = [i for i in items if i['lugar'] == sitio]
+                if objs:
+                    contenido += f"**{sitio}:**\n" + "\n".join([f"- {i['objeto']}: {i['cantidad']}" for i in objs]) + "\n"
+            if contenido:
+                embed.add_field(name=f"--- {zona} ---", value=contenido, inline=False)
+    return embed
+
 # --- BOT ---
 class MyBot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix="!", intents=discord.Intents.all())
-
     async def setup_hook(self):
         self.add_view(PanelControl(self))
         await self.tree.sync()
 
 bot = MyBot()
 
-# --- MODAL CANTIDAD ---
+# --- INTERFAZ ---
 class CantidadModal(ui.Modal, title="Indica la Cantidad"):
     input_cant = ui.TextInput(label="Cantidad", placeholder="Ej: 5", min_length=1, max_length=5)
-
-    def __init__(self, accion, lugar, objeto):
+    def __init__(self, accion, lugar, objeto, view_padre):
         super().__init__()
-        self.accion, self.lugar, self.objeto = accion, lugar, objeto
+        self.accion, self.lugar, self.objeto, self.view_padre = accion, lugar, objeto, view_padre
 
     async def on_submit(self, interaction: discord.Interaction):
-        try:
-            cant = int(self.input_cant.value)
-            filtro = {"objeto": self.objeto, "lugar": self.lugar}
-            if self.accion == "Retirar":
-                existente = items_col.find_one(filtro)
-                if not existente or existente['cantidad'] < cant:
-                    return await interaction.response.send_message("❌ No hay suficiente cantidad.", ephemeral=True)
-                if existente['cantidad'] == cant: items_col.delete_one(filtro)
-                else: items_col.update_one(filtro, {"$inc": {"cantidad": -cant}})
-            else:
-                items_col.update_one(filtro, {"$inc": {"cantidad": cant}}, upsert=True)
-            
-            logs_col.insert_one({"usuario": interaction.user.display_name, "accion": self.accion, "objeto": self.objeto, "cantidad": cant, "lugar": self.lugar, "fecha": datetime.now().strftime("%d/%m/%Y %H:%M")})
-            await interaction.response.send_message(f"✅ {self.accion} {cant}x {self.objeto} en {self.lugar}.", ephemeral=True)
-        except ValueError:
-            await interaction.response.send_message("❌ Error: Introduce un número.", ephemeral=True)
-
-# --- MENÚS ---
-class SelectorObjeto(ui.Select):
-    def __init__(self, categoria, lugar, accion):
-        super().__init__(placeholder="Selecciona el objeto...", options=[discord.SelectOption(label=obj) for obj in CATEGORIAS[categoria]])
-        self.lugar, self.accion = lugar, accion
-    async def callback(self, interaction: discord.Interaction):
-        await interaction.response.send_modal(CantidadModal(self.accion, self.lugar, self.values[0]))
+        cant = int(self.input_cant.value)
+        filtro = {"objeto": self.objeto, "lugar": self.lugar}
+        if self.accion == "Retirar":
+            existente = items_col.find_one(filtro)
+            if not existente or existente['cantidad'] < cant:
+                return await interaction.response.send_message("❌ No hay suficiente.", ephemeral=True)
+            if existente['cantidad'] == cant: items_col.delete_one(filtro)
+            else: items_col.update_one(filtro, {"$inc": {"cantidad": -cant}})
+        else:
+            items_col.update_one(filtro, {"$inc": {"cantidad": cant}}, upsert=True)
+        
+        await interaction.response.edit_message(content="✅ Operación realizada.", view=None)
+        # ACTUALIZAR EL PANEL PRINCIPAL
+        await interaction.message.channel.edit(embed=generar_embed_inventario())
 
 class PanelControl(ui.View):
     def __init__(self, bot):
@@ -99,18 +104,25 @@ class PanelControl(ui.View):
                 await it.response.edit_message(content=f"📍 {sel.values[0]} | Elige categoría:", view=view_cat)
             select.callback = lugar_cb
             view.add_item(select)
-        await interaction.response.send_message("Selecciona ubicación:", view=view, ephemeral=True)
+        await interaction.response.send_message("¿Dónde?:", view=view, ephemeral=True)
 
     def crear_cat_cb(self, cat, lugar, accion):
         async def cb(it):
             v = ui.View()
             v.add_item(SelectorObjeto(cat, lugar, accion))
-            await it.response.edit_message(content=f"📍 {lugar} > {cat}. Elige objeto:", view=v)
+            await it.response.edit_message(content=f"📍 {lugar} > {cat}. ¿Objeto?:", view=v)
         return cb
+
+class SelectorObjeto(ui.Select):
+    def __init__(self, categoria, lugar, accion):
+        super().__init__(placeholder="Selecciona...", options=[discord.SelectOption(label=obj) for obj in CATEGORIAS[categoria]])
+        self.lugar, self.accion = lugar, accion
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(CantidadModal(self.accion, self.lugar, self.values[0], self))
 
 @bot.tree.command(name="panel_inventario", description="Genera el panel")
 async def panel_inventario(interaction):
-    await interaction.response.send_message("📦 **ALMACÉN DE FACCION**", view=PanelControl(bot))
+    await interaction.response.send_message(embed=generar_embed_inventario(), view=PanelControl(bot))
 
 Thread(target=run).start()
 bot.run(os.getenv("DISCORD_TOKEN"))
