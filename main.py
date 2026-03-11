@@ -9,7 +9,7 @@ from flask import Flask
 # --- CONFIGURACIÓN ---
 CATEGORIAS = {
     "ARMAS": ["Mazo", "Bate De Béisbol Con Pinchos", "Palo De Golf", "Navaja Automática", "Machete", "Cuchillo", "Bate De Béisbol", "Palanca", "Martillo", "Hacha", "Pistola B92", "Pistola P2K", "Munición Pistola P2K", "Munición Pistola B92", "R700", "Munición R700"],
-    "DROGAS": ["Cogollos Secos", "Porro", "Bolsa Con Polvitos", "Semilla Genérica", "Seed Pouch", "Bolsa Agrícola", "Semillas De Lima", "Semilla De Coca", "Marihuana Empaquetada"],
+    "DROGAS": ["Cogollos Secos", "Porro", "Bolsa Con Polvillos", "Semilla Genérica", "Seed Pouch", "Bolsa Agrícola", "Semillas De Lima", "Semilla De Coca", "Marihuana Empaquetada"],
     "EQUIPAMIENTO": ["Respirador", "Binoculares", "Ganzúa", "Tablet", "Jeringa", "Dispositivo Multifuncion", "Pala De Jardín", "Chaleco Táctico", "Placas", "Bridas"],
     "OTROS": ["Cartera", "Llavero", "Billetera Luc", "Taco De Billar", "Vaso De Refresco", "Radio Básica", "Teléfono", "Contenedor De Gominolas", "Bote De Pastillas", "Pendrive Usb", "Pendrive Rojo", "Pendrive Carreras", "Pendrive Pistas", "Papel Absorbente", "Aceite De Coco", "Paquete De Puros", "Bolsa Negra", "Botiquín De Primeros Auxilios", "Lima", "Film De Cocina", "Papel De Fumar", "Dinero", "Paquete De Cigarrillos", "Bloc De Notas", "Cartera De Tarjetas", "Cartera De Documentos", "Caja De Cerveza", "Bidón De Gasolina", "Tarjeta Sd"]
 }
@@ -29,7 +29,7 @@ app = Flask('')
 def home(): return "Bot Online"
 def run_flask(): app.run(host='0.0.0.0', port=8080)
 
-# --- LÓGICA DE EMBED (DISEÑO SOLICITADO) ---
+# --- LÓGICA DE EMBED (ESPACIADO NATURAL) ---
 def generar_embed_inventario():
     embed = discord.Embed(title="📦 ALMACÉN DE LA FACCIÓN", color=discord.Color.blue())
     items = list(items_col.find())
@@ -38,7 +38,8 @@ def generar_embed_inventario():
     else:
         emojis_zona = {"SEDE": "🏠", "VEHICULOS": "🚗"}
         for zona, sitios in LUGARES.items():
-            texto_zona = "\u200b\n" # Espacio inicial debajo del título
+            # Un solo salto de línea después del título de la zona
+            texto_zona = "\n" 
             zona_tiene_objetos = False
             for sitio in sitios:
                 objs = [i for i in items if i['lugar'] == sitio]
@@ -47,13 +48,13 @@ def generar_embed_inventario():
                     texto_zona += f"**{sitio.title()}**\n"
                     for i in objs:
                         texto_zona += f"• {i['objeto'].title()}: **{i['cantidad']}x**\n"
-                    texto_zona += "\n\n" # Espacio entre estanterías
+                    # Salto de línea sencillo entre estanterías
+                    texto_zona += "\n" 
+            
             if zona_tiene_objetos:
-                embed.add_field(name=f"{emojis_zona.get(zona, '📦')} {zona}", value=texto_zona.strip(), inline=False)
-                embed.add_field(name="\u200b", value="\u200b", inline=False) # Espacio entre zonas
+                # Añadimos el field sin meter bloques invisibles extra abajo
+                embed.add_field(name=f"{emojis_zona.get(zona, '📦')} {zona}", value=texto_zona.strip() + "\n\u200b", inline=False)
     return embed
-
-
 
 bot = commands.Bot(command_prefix="!", intents=discord.Intents.all())
 
