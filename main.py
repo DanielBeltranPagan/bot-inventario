@@ -29,7 +29,7 @@ app = Flask('')
 def home(): return "Bot Online"
 def run_flask(): app.run(host='0.0.0.0', port=8080)
 
-# --- LÓGICA DE EMBED (COMPACTA) ---
+# --- LÓGICA DE EMBED (DISEÑO SOLICITADO) ---
 def generar_embed_inventario():
     embed = discord.Embed(title="📦 ALMACÉN DE LA FACCIÓN", color=discord.Color.blue())
     items = list(items_col.find())
@@ -38,7 +38,7 @@ def generar_embed_inventario():
     else:
         emojis_zona = {"SEDE": "🏠", "VEHICULOS": "🚗"}
         for zona, sitios in LUGARES.items():
-            texto_zona = ""
+            texto_zona = "\u200b\n" # Espacio inicial debajo del título
             zona_tiene_objetos = False
             for sitio in sitios:
                 objs = [i for i in items if i['lugar'] == sitio]
@@ -47,9 +47,10 @@ def generar_embed_inventario():
                     texto_zona += f"**{sitio.title()}**\n"
                     for i in objs:
                         texto_zona += f"• {i['objeto'].title()}: **{i['cantidad']}x**\n"
-                    texto_zona += "\n"
+                    texto_zona += "\n\n" # Espacio entre estanterías
             if zona_tiene_objetos:
                 embed.add_field(name=f"{emojis_zona.get(zona, '📦')} {zona}", value=texto_zona.strip(), inline=False)
+                embed.add_field(name="\u200b", value="\u200b", inline=False) # Espacio entre zonas
     return embed
 
 
