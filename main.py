@@ -25,13 +25,11 @@ db = client['InventarioGTA']
 items_col = db['items']
 logs_col = db['logs']
 
-# --- WEB SERVER ---
 app = Flask('')
 @app.route('/')
 def home(): return "Bot Online"
 def run_flask(): app.run(host='0.0.0.0', port=8080)
 
-# --- LÓGICA DE EMBED ---
 def generar_embed_inventario():
     embed = discord.Embed(title="📦 ALMACÉN DE LA FACCIÓN", color=discord.Color.blue())
     items = list(items_col.find())
@@ -56,7 +54,6 @@ def generar_embed_inventario():
 
 bot = commands.Bot(command_prefix="!", intents=discord.Intents.all())
 
-# --- VISTA CENTRAL ---
 class PanelControl(ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -74,7 +71,6 @@ class PanelControl(ui.View):
             btn.callback = self.crear_zona_cb(zona, accion)
             view.add_item(btn)
         view.add_item(self.btn_cancelar())
-        # .edit_message hace que no parezca una respuesta nueva
         await interaction.response.edit_message(content=None, embed=generar_embed_inventario(), view=view)
 
     def crear_zona_cb(self, zona, accion):
@@ -86,12 +82,12 @@ class PanelControl(ui.View):
                 if lugar == "CAJA DINERO":
                     if accion == "Retirar":
                         ex = items_col.find_one({"objeto": "Dinero", "lugar": "CAJA DINERO"})
-                        if not ex: return await it_sitio.response.edit_message(content="❌ No hay dinero.", view=PanelControl())
+                        if not ex: return await it_sitio.response.send_message("❌ No hay dinero.", ephemeral=True, delete_after=3)
                     await it_sitio.response.send_modal(CantidadModal(accion, "CAJA DINERO", "Dinero"))
                     return
                 if accion == "Retirar":
                     items_en_lugar = list(items_col.find({"lugar": lugar}))
-                    if not items_en_lugar: return await it_sitio.response.edit_message(content="❌ Sitio vacío.", view=PanelControl())
+                    if not items_en_lugar: return await it_sitio.response.send_message("❌ Sitio vacío.", ephemeral=True, delete_after=3)
                     view_obj = ui.View()
                     select_obj = ui.Select(placeholder="¿Qué retirar?", options=[discord.SelectOption(label=i['objeto']) for i in items_en_lugar])
                     select_obj.callback = lambda it_o: it_o.response.send_modal(CantidadModal(accion, lugar, select_obj.values[0]))
@@ -136,27 +132,26 @@ class CantidadModal(ui.Modal, title="Cantidad"):
             filtro = {"objeto": self.objeto, "lugar": self.lugar}
             if self.accion == "Retirar":
                 ex = items_col.find_one(filtro)
-                if not ex or ex['cantidad'] < cant: return await interaction.response.send_message("❌ Insuficiente.", ephemeral=True)
+                if not ex or ex['cantidad'] < cant: return await interaction.response.send_message("❌ Insuficiente.", ephemeral=True, delete_after=3)
                 if ex['cantidad'] == cant: items_col.delete_one(filtro)
                 else: items_col.update_one(filtro, {"$inc": {"cantidad": -cant}})
             else: items_col.update_one(filtro, {"$inc": {"cantidad": cant}}, upsert=True)
             
-            # Log en Mongo
             logs_col.insert_one({
                 "usuario": str(interaction.user), "accion": self.accion.upper(), "objeto": self.objeto,
                 "cantidad": cant, "lugar": self.lugar, "fecha": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             })
             
-            # Respondemos de forma efímera para que no se vea el "Gemini respondió a..."
             await interaction.response.send_message(f"✅ {self.accion} exitoso.", ephemeral=True, delete_after=2)
             await interaction.message.edit(content=None, embed=generar_embed_inventario(), view=PanelControl())
         except ValueError:
-            await interaction.response.send_message("❌ Introduce un número válido.", ephemeral=True)
+            await interaction.response.send_message("❌ Introduce un número válido.", ephemeral=True, delete_after=3)
 
-@bot.tree.command(name="panel_inventario")
-async def panel_inventario(interaction):
-    # Usar el embed directamente sin texto de contenido hace la respuesta más limpia
-    await interaction.response.send_message(embed=generar_embed_inventario(), view=PanelControl())
+# --- COMANDO DE TEXTO INVISIBLE ---
+@bot.command()
+async def inventario(ctx):
+    await ctx.message.delete() # Borra tu mensaje "!inventario"
+    await ctx.send(embed=generar_embed_inventario(), view=PanelControl())
 
 Thread(target=run_flask).start()
 bot.run(os.getenv("DISCORD_TOKEN"))
