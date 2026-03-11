@@ -5,11 +5,12 @@ from discord.ext import commands
 from pymongo import MongoClient
 from threading import Thread
 from flask import Flask
+from datetime import datetime
 
 # --- CONFIGURACIÓN ---
 CATEGORIAS = {
     "ARMAS": ["Mazo", "Bate De Béisbol Con Pinchos", "Palo De Golf", "Navaja Automática", "Machete", "Cuchillo", "Bate De Béisbol", "Palanca", "Martillo", "Hacha", "Pistola B92", "Pistola P2K", "Munición Pistola P2K", "Munición Pistola B92", "R700", "Munición R700"],
-    "DROGAS": ["Cogollos Secos", "Porro", "Bolsa Con Polvillos", "Semilla Genérica", "Seed Pouch", "Bolsa Agrícola", "Semillas De Lima", "Semilla De Coca", "Marihuana Empaquetada"],
+    "DROGAS": ["Cogollos Secos", "Porro", "Bolsa Con Polvitos", "Semilla Genérica", "Seed Pouch", "Bolsa Agrícola", "Semillas De Lima", "Semilla De Coca", "Marihuana Empaquetada"],
     "EQUIPAMIENTO": ["Respirador", "Binoculares", "Ganzúa", "Tablet", "Jeringa", "Dispositivo Multifuncion", "Pala De Jardín", "Chaleco Táctico", "Placas", "Bridas"],
     "OTROS": ["Cartera", "Llavero", "Billetera Luc", "Taco De Billar", "Vaso De Refresco", "Radio Básica", "Teléfono", "Contenedor De Gominolas", "Bote De Pastillas", "Pendrive Usb", "Pendrive Rojo", "Pendrive Carreras", "Pendrive Pistas", "Papel Absorbente", "Aceite De Coco", "Paquete De Puros", "Bolsa Negra", "Botiquín De Primeros Auxilios", "Lima", "Film De Cocina", "Papel De Fumar", "Dinero", "Paquete De Cigarrillos", "Bloc De Notas", "Cartera De Tarjetas", "Cartera De Documentos", "Caja De Cerveza", "Bidón De Gasolina", "Tarjeta Sd"]
 }
@@ -22,6 +23,7 @@ LUGARES = {
 client = MongoClient(os.getenv("MONGO_URI"))
 db = client['InventarioGTA']
 items_col = db['items']
+logs_col = db['logs']
 
 # --- WEB SERVER ---
 app = Flask('')
@@ -29,7 +31,7 @@ app = Flask('')
 def home(): return "Bot Online"
 def run_flask(): app.run(host='0.0.0.0', port=8080)
 
-# --- LÓGICA DE EMBED (ESPACIADO NATURAL) ---
+# --- LÓGICA DE EMBED ---
 def generar_embed_inventario():
     embed = discord.Embed(title="📦 ALMACÉN DE LA FACCIÓN", color=discord.Color.blue())
     items = list(items_col.find())
@@ -38,7 +40,6 @@ def generar_embed_inventario():
     else:
         emojis_zona = {"SEDE": "🏠", "VEHICULOS": "🚗"}
         for zona, sitios in LUGARES.items():
-            # Un solo salto de línea después del título de la zona
             texto_zona = "\n" 
             zona_tiene_objetos = False
             for sitio in sitios:
@@ -48,11 +49,8 @@ def generar_embed_inventario():
                     texto_zona += f"**{sitio.title()}**\n"
                     for i in objs:
                         texto_zona += f"• {i['objeto'].title()}: **{i['cantidad']}x**\n"
-                    # Salto de línea sencillo entre estanterías
                     texto_zona += "\n" 
-            
             if zona_tiene_objetos:
-                # Añadimos el field sin meter bloques invisibles extra abajo
                 embed.add_field(name=f"{emojis_zona.get(zona, '📦')} {zona}", value=texto_zona.strip() + "\n\u200b", inline=False)
     return embed
 
@@ -76,7 +74,8 @@ class PanelControl(ui.View):
             btn.callback = self.crear_zona_cb(zona, accion)
             view.add_item(btn)
         view.add_item(self.btn_cancelar())
-        await interaction.response.edit_message(content=f"⚙️ ¿Qué zona para {accion}?", embed=generar_embed_inventario(), view=view)
+        # .edit_message hace que no parezca una respuesta nueva
+        await interaction.response.edit_message(content=None, embed=generar_embed_inventario(), view=view)
 
     def crear_zona_cb(self, zona, accion):
         async def cb(it):
@@ -84,6 +83,12 @@ class PanelControl(ui.View):
             select = ui.Select(placeholder="Elegir sitio...", options=[discord.SelectOption(label=s) for s in LUGARES[zona]])
             async def sel_cb(it_sitio):
                 lugar = select.values[0]
+                if lugar == "CAJA DINERO":
+                    if accion == "Retirar":
+                        ex = items_col.find_one({"objeto": "Dinero", "lugar": "CAJA DINERO"})
+                        if not ex: return await it_sitio.response.edit_message(content="❌ No hay dinero.", view=PanelControl())
+                    await it_sitio.response.send_modal(CantidadModal(accion, "CAJA DINERO", "Dinero"))
+                    return
                 if accion == "Retirar":
                     items_en_lugar = list(items_col.find({"lugar": lugar}))
                     if not items_en_lugar: return await it_sitio.response.edit_message(content="❌ Sitio vacío.", view=PanelControl())
@@ -116,7 +121,7 @@ class PanelControl(ui.View):
 
     def btn_cancelar(self):
         btn = ui.Button(label="❌ VOLVER", style=discord.ButtonStyle.secondary)
-        btn.callback = lambda it: it.response.edit_message(content="📦 **PANEL PRINCIPAL**", embed=generar_embed_inventario(), view=PanelControl())
+        btn.callback = lambda it: it.response.edit_message(content=None, embed=generar_embed_inventario(), view=PanelControl())
         return btn
 
 class CantidadModal(ui.Modal, title="Cantidad"):
@@ -135,13 +140,22 @@ class CantidadModal(ui.Modal, title="Cantidad"):
                 if ex['cantidad'] == cant: items_col.delete_one(filtro)
                 else: items_col.update_one(filtro, {"$inc": {"cantidad": -cant}})
             else: items_col.update_one(filtro, {"$inc": {"cantidad": cant}}, upsert=True)
+            
+            # Log en Mongo
+            logs_col.insert_one({
+                "usuario": str(interaction.user), "accion": self.accion.upper(), "objeto": self.objeto,
+                "cantidad": cant, "lugar": self.lugar, "fecha": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            })
+            
+            # Respondemos de forma efímera para que no se vea el "Gemini respondió a..."
             await interaction.response.send_message(f"✅ {self.accion} exitoso.", ephemeral=True, delete_after=2)
-            await interaction.message.edit(content="📦 **PANEL PRINCIPAL**", embed=generar_embed_inventario(), view=PanelControl())
+            await interaction.message.edit(content=None, embed=generar_embed_inventario(), view=PanelControl())
         except ValueError:
             await interaction.response.send_message("❌ Introduce un número válido.", ephemeral=True)
 
 @bot.tree.command(name="panel_inventario")
 async def panel_inventario(interaction):
+    # Usar el embed directamente sin texto de contenido hace la respuesta más limpia
     await interaction.response.send_message(embed=generar_embed_inventario(), view=PanelControl())
 
 Thread(target=run_flask).start()
