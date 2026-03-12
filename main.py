@@ -8,12 +8,13 @@ from flask import Flask
 from datetime import datetime
 
 # --- CONFIGURACIÓN ---
-# He unificado "OTROS" y reorganizado para mantener el límite de 25 por menú
 CATEGORIAS = {
     "ARMAS": ["Mazo", "Bate De Béisbol Con Pinchos", "Palo De Golf", "Navaja Automática", "Machete", "Cuchillo", "Bate De Béisbol", "Palanca", "Martillo", "Hacha", "Pistola B92", "Pistola P2K", "Munición Pistola P2K", "Munición Pistola B92", "R700", "Munición R700"],
     "DROGAS": ["Cogollos Secos", "Porro", "Bolsa Con Polvitos", "Semilla Genérica", "Seed Pouch", "Bolsa Agrícola", "Semillas De Lima", "Semilla De Coca", "Marihuana Empaquetada"],
     "EQUIPAMIENTO": ["Respirador", "Binoculares", "Ganzúa", "Tablet", "Jeringa", "Dispositivo Multifuncion", "Pala De Jardín", "Chaleco Táctico", "Placas", "Bridas", "Radio De Larga Distancia"],
-    "OTROS": ["Cartera", "Llavero", "Billetera Luc", "Taco De Billar", "Vaso De Refresco", "Radio Básica", "Teléfono", "Contenedor De Gominolas", "Bote De Pastillas", "Pendrive Usb", "Pendrive Rojo", "Pendrive Carreras", "Pendrive Pistas", "Papel Absorbente", "Aceite De Coco", "Paquete De Puros", "Bolsa Negra", "Botiquín De Primeros Auxilios", "Lima", "Film De Cocina", "Papel De Fumar", "Dinero", "Paquete De Cigarrillos", "Bloc De Notas", "Cartera De Tarjetas", "Cartera De Documentos", "Caja De Cerveza", "Bidón De Gasolina", "Tarjeta Sd"]
+    "ACCESORIOS": ["Cartera", "Llavero", "Billetera Luc", "Taco De Billar", "Vaso De Refresco", "Radio Básica", "Teléfono", "Pendrive Usb", "Pendrive Rojo", "Pendrive Carreras", "Pendrive Pistas"],
+    "CONSUMIBLES": ["Contenedor De Gominolas", "Bote De Pastillas", "Papel Absorbente", "Aceite De Coco", "Paquete De Puros", "Paquete De Cigarrillos", "Caja De Cerveza", "Botiquín De Primeros Auxilios", "Bidón De Gasolina"],
+    "DOCUMENTOS Y OTROS": ["Bolsa Negra", "Lima", "Film De Cocina", "Papel De Fumar", "Dinero", "Bloc De Notas", "Cartera De Tarjetas", "Cartera De Documentos", "Tarjeta Sd"]
 }
 
 LUGARES = {
@@ -90,7 +91,6 @@ class PanelControl(ui.View):
                     items_en_lugar = list(items_col.find({"lugar": lugar}))
                     if not items_en_lugar: return await it_sitio.response.send_message("❌ Sitio vacío.", ephemeral=True, delete_after=3)
                     view_obj = ui.View()
-                    # Aquí también aplicamos el límite de 25 por si una estantería tiene muchos objetos
                     select_obj = ui.Select(placeholder="¿Qué retirar?", options=[discord.SelectOption(label=i['objeto']) for i in items_en_lugar[:25]])
                     select_obj.callback = lambda it_o: it_o.response.send_modal(CantidadModal(accion, lugar, select_obj.values[0]))
                     view_obj.add_item(select_obj); view_obj.add_item(self.btn_cancelar())
@@ -112,9 +112,7 @@ class PanelControl(ui.View):
 
     async def mostrar_objetos(self, it, cat, lugar, accion):
         view = ui.View()
-        # Seleccionamos hasta 25 elementos para evitar el error de Discord
-        lista = CATEGORIAS[cat][:25]
-        select = ui.Select(placeholder="Selecciona objeto...", options=[discord.SelectOption(label=obj) for obj in lista])
+        select = ui.Select(placeholder="Selecciona objeto...", options=[discord.SelectOption(label=obj) for obj in CATEGORIAS[cat][:25]])
         select.callback = lambda it_obj: it_obj.response.send_modal(CantidadModal(accion, lugar, select.values[0]))
         view.add_item(select); view.add_item(self.btn_cancelar())
         await it.response.edit_message(content=f"📍 {lugar} > {cat}. ¿Qué objeto?", view=view)
@@ -150,8 +148,6 @@ class CantidadModal(ui.Modal, title="Cantidad"):
             await interaction.message.edit(content=None, embed=generar_embed_inventario(), view=PanelControl())
         except ValueError:
             await interaction.response.send_message("❌ Introduce un número válido.", ephemeral=True, delete_after=3)
-
-
 
 @bot.command()
 async def inventario(ctx):
