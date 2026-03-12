@@ -7,18 +7,16 @@ from threading import Thread
 from flask import Flask
 from datetime import datetime
 
-# --- CONFIGURACIÓN ---
+# --- CONFIGURACIÓN (SIN DINERO) ---
 CATEGORIAS = {
     "ARMAS": ["Mazo", "Bate De Béisbol Con Pinchos", "Palo De Golf", "Navaja Automática", "Machete", "Cuchillo", "Bate De Béisbol", "Palanca", "Martillo", "Hacha", "Pistola B92", "Pistola P2K", "Munición Pistola P2K", "Munición Pistola B92", "R700", "Munición R700"],
     "DROGAS": ["Cogollos Secos", "Porro", "Bolsa Con Polvitos", "Semilla Genérica", "Seed Pouch", "Bolsa Agrícola", "Semillas De Lima", "Semilla De Coca", "Marihuana Empaquetada"],
-    "EQUIPAMIENTO": ["Respirador", "Binoculares", "Ganzúa", "Tablet", "Jeringa", "Dispositivo Multifuncion", "Pala De Jardín", "Chaleco Táctico", "Placas", "Bridas", "Radio De Larga Distancia"],
-    "ACCESORIOS": ["Cartera", "Llavero", "Billetera Luc", "Taco De Billar", "Vaso De Refresco", "Radio Básica", "Teléfono", "Pendrive Usb", "Pendrive Rojo", "Pendrive Carreras", "Pendrive Pistas"],
-    "CONSUMIBLES": ["Contenedor De Gominolas", "Bote De Pastillas", "Papel Absorbente", "Aceite De Coco", "Paquete De Puros", "Paquete De Cigarrillos", "Caja De Cerveza", "Botiquín De Primeros Auxilios", "Bidón De Gasolina"],
-    "DOCUMENTOS Y OTROS": ["Bolsa Negra", "Lima", "Film De Cocina", "Papel De Fumar", "Dinero", "Bloc De Notas", "Cartera De Tarjetas", "Cartera De Documentos", "Tarjeta Sd"]
+    "EQUIPAMIENTO": ["Respirador", "Binoculares", "Ganzúa", "Tablet", "Jeringa", "Dispositivo Multifuncion", "Pala De Jardín", "Chaleco Táctico", "Placas", "Bridas"],
+    "OTROS": ["Cartera", "Llavero", "Billetera Luc", "Taco De Billar", "Vaso De Refresco", "Radio Básica", "Teléfono", "Contenedor De Gominolas", "Bote De Pastillas", "Pendrive Usb", "Pendrive Rojo", "Pendrive Carreras", "Pendrive Pistas", "Papel Absorbente", "Aceite De Coco", "Paquete De Puros", "Bolsa Negra", "Botiquín De Primeros Auxilios", "Lima", "Film De Cocina", "Papel De Fumar", "Paquete De Cigarrillos", "Bloc De Notas", "Cartera De Tarjetas", "Cartera De Documentos", "Caja De Cerveza", "Bidón De Gasolina", "Tarjeta Sd"]
 }
 
 LUGARES = {
-    "SEDE": ["ESTANTERIA 1", "ESTANTERIA 2", "ESTANTERIA 3", "CAJA DINERO"],
+    "SEDE": ["ESTANTERIA 1", "ESTANTERIA 2", "ESTANTERIA 3"],
     "VEHICULOS": ["BURRITO 1", "BURRITO 2"]
 }
 
@@ -81,17 +79,11 @@ class PanelControl(ui.View):
             select = ui.Select(placeholder="Elegir sitio...", options=[discord.SelectOption(label=s) for s in LUGARES[zona]])
             async def sel_cb(it_sitio):
                 lugar = select.values[0]
-                if lugar == "CAJA DINERO":
-                    if accion == "Retirar":
-                        ex = items_col.find_one({"objeto": "Dinero", "lugar": "CAJA DINERO"})
-                        if not ex: return await it_sitio.response.send_message("❌ No hay dinero.", ephemeral=True, delete_after=3)
-                    await it_sitio.response.send_modal(CantidadModal(accion, "CAJA DINERO", "Dinero"))
-                    return
                 if accion == "Retirar":
                     items_en_lugar = list(items_col.find({"lugar": lugar}))
                     if not items_en_lugar: return await it_sitio.response.send_message("❌ Sitio vacío.", ephemeral=True, delete_after=3)
                     view_obj = ui.View()
-                    select_obj = ui.Select(placeholder="¿Qué retirar?", options=[discord.SelectOption(label=i['objeto']) for i in items_en_lugar[:25]])
+                    select_obj = ui.Select(placeholder="¿Qué retirar?", options=[discord.SelectOption(label=i['objeto']) for i in items_en_lugar])
                     select_obj.callback = lambda it_o: it_o.response.send_modal(CantidadModal(accion, lugar, select_obj.values[0]))
                     view_obj.add_item(select_obj); view_obj.add_item(self.btn_cancelar())
                     await it_sitio.response.edit_message(content=f"📍 {lugar}. Selecciona objeto:", view=view_obj)
@@ -112,7 +104,7 @@ class PanelControl(ui.View):
 
     async def mostrar_objetos(self, it, cat, lugar, accion):
         view = ui.View()
-        select = ui.Select(placeholder="Selecciona objeto...", options=[discord.SelectOption(label=obj) for obj in CATEGORIAS[cat][:25]])
+        select = ui.Select(placeholder="Selecciona objeto...", options=[discord.SelectOption(label=obj) for obj in CATEGORIAS[cat]])
         select.callback = lambda it_obj: it_obj.response.send_modal(CantidadModal(accion, lugar, select.values[0]))
         view.add_item(select); view.add_item(self.btn_cancelar())
         await it.response.edit_message(content=f"📍 {lugar} > {cat}. ¿Qué objeto?", view=view)
